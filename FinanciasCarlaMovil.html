@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Control Carla 💗</title>
+<link rel="apple-touch-icon" href="icono.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{
+font-family:'Segoe UI',sans-serif;
+background:#ffeaf4;
+margin:0;
+padding:15px;
+display:flex;
+justify-content:center;
+}
+.app{
+width:100%;
+max-width:480px;
+background:white;
+border-radius:30px;
+padding:20px;
+box-shadow:0 15px 40px rgba(0,0,0,0.15);
+}
+h1{text-align:center;color:#e83e8c;margin-bottom:15px;}
+.card{background:#fff5fa;padding:15px;border-radius:20px;margin-bottom:15px;}
+.dashboard{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.metric{background:#ffd6e8;padding:10px;border-radius:15px;text-align:center;font-size:14px;font-weight:bold;}
+.metric span{display:block;margin-top:5px;font-size:16px;}
+input,select,button{width:100%;padding:10px;margin-top:6px;border-radius:12px;border:1px solid #ddd;font-size:14px;}
+button{background:#ff6fa5;color:white;border:none;font-weight:bold;cursor:pointer;}
+button:hover{opacity:0.9;}
+table{width:100%;margin-top:10px;border-collapse:collapse;font-size:13px;}
+th,td{padding:6px;text-align:center;}
+tr:nth-child(even){background:#ffe3ef;}
+.small-btn{padding:4px 6px;font-size:11px;}
+.progress-container{background:#f8d7e5;border-radius:15px;height:18px;overflow:hidden;}
+.progress-bar{height:100%;width:0%;color:white;font-size:11px;display:flex;align-items:center;justify-content:center;transition:width 1s ease;}
+.alert{background:#ff4d6d;color:white;padding:8px;border-radius:12px;text-align:center;margin-bottom:10px;display:none;}
+canvas{margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+<h1>💗 Control Carla</h1>
+<div class="alert" id="alerta">⚠️ Has superado un presupuesto</div>
+
+<div class="card dashboard">
+<div class="metric">Ingresos<span id="dashIngresos">0€</span></div>
+<div class="metric">Gastos<span id="dashGastos">0€</span></div>
+<div class="metric">Ahorro<span id="dashAhorro">0€</span></div>
+<div class="metric">Balance<span id="dashBalance">0€</span></div>
+</div>
+
+<div class="card">
+<input type="month" id="mesSelector">
+</div>
+
+<div class="card">
+<select id="tipo">
+<option value="ingreso">Ingreso</option>
+<option value="gasto">Gasto</option>
+<option value="ahorro">Ahorro</option>
+</select>
+<input type="number" id="cantidad" placeholder="Cantidad €">
+<input type="text" id="categoria" placeholder="Categoría">
+<button onclick="agregarMovimiento()">Guardar</button>
+</div>
+
+<div class="card">
+<h3>Historial</h3>
+<table>
+<thead>
+<tr>
+<th>Tipo</th>
+<th>Cat.</th>
+<th>€</th>
+<th>✏️</th>
+<th>🗑️</th>
+</tr>
+</thead>
+<tbody id="tablaMovimientos"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>Presupuestos</h3>
+<input type="text" id="presupuestoCategoria" placeholder="Categoría">
+<input type="number" id="presupuestoCantidad" placeholder="Presupuesto €">
+<button onclick="guardarPresupuesto()">Guardar</button>
+
+<table>
+<thead>
+<tr>
+<th>Cat.</th>
+<th>Pres.</th>
+<th>Gastado</th>
+<th>%</th>
+</tr>
+</thead>
+<tbody id="tablaPresupuestos"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>Meta Ahorro</h3>
+<input type="number" id="metaAhorro" placeholder="Meta total €">
+<button onclick="guardarMeta()">Guardar Meta</button>
+<div class="progress-container">
+<div class="progress-bar" id="barraMeta">0%</div>
+</div>
+</div>
+
+<div class="card">
+<h3>Evolución Ahorro</h3>
+<canvas id="graficoAhorro"></canvas>
+</div>
+
+</div>
+
+<script>
+let movimientos=JSON.parse(localStorage.getItem("movimientos"))||[];
+let presupuestos=JSON.parse(localStorage.getItem("presupuestos"))||{};
+let meta=parseFloat(localStorage.getItem("meta"))||0;
+
+mesSelector.value=new Date().toISOString().slice(0,7);
+
+function guardarDatos(){
+localStorage.setItem("movimientos",JSON.stringify(movimientos));
+localStorage.setItem("presupuestos",JSON.stringify(presupuestos));
+localStorage.setItem("meta",meta);
+}
+
+function agregarMovimiento(){
+let tipoVal=document.getElementById("tipo").value;
+let cantidad=parseFloat(document.getElementById("cantidad").value);
+let categoria=document.getElementById("categoria").value;
+let mes=mesSelector.value;
+if(!cantidad||!categoria)return;
+movimientos.push({tipo:tipoVal,cantidad,categoria,mes});
+guardarDatos();
+actualizarTodo();
+}
+
+function editarMovimiento(i){
+let nueva=prompt("Nueva cantidad:",movimientos[i].cantidad);
+if(nueva!==null){
+movimientos[i].cantidad=parseFloat(nueva);
+guardarDatos();
+actualizarTodo();
+}
+}
+
+function borrarMovimiento(i){
+movimientos.splice(i,1);
+guardarDatos();
+actualizarTodo();
+}
+
+function actualizarDashboard(){
+let mes=mesSelector.value;
+let ing=0,gas=0,aho=0;
+movimientos.forEach(m=>{
+if(m.mes===mes){
+if(m.tipo==="ingreso")ing+=m.cantidad;
+if(m.tipo==="gasto")gas+=m.cantidad;
+if(m.tipo==="ahorro")aho+=m.cantidad;
+}
+});
+dashIngresos.innerText=ing.toFixed(2)+"€";
+dashGastos.innerText=gas.toFixed(2)+"€";
+dashAhorro.innerText=aho.toFixed(2)+"€";
+dashBalance.innerText=(ing-gas-aho).toFixed(2)+"€";
+}
+
+function actualizarTabla(){
+let mes=mesSelector.value;
+tablaMovimientos.innerHTML="";
+movimientos.forEach((m,i)=>{
+if(m.mes===mes){
+tablaMovimientos.innerHTML+=`
+<tr>
+<td>${m.tipo}</td>
+<td>${m.categoria}</td>
+<td>${m.cantidad.toFixed(2)}</td>
+<td><button class="small-btn" onclick="editarMovimiento(${i})">✏️</button></td>
+<td><button class="small-btn" onclick="borrarMovimiento(${i})">🗑️</button></td>
+</tr>`;
+}
+});
+}
+
+function guardarPresupuesto(){
+let cat=document.getElementById("presupuestoCategoria").value;
+let cant=parseFloat(document.getElementById("presupuestoCantidad").value);
+let mes=mesSelector.value;
+if(!cat||!cant)return;
+if(!presupuestos[mes])presupuestos[mes]={};
+presupuestos[mes][cat]=cant;
+guardarDatos();
+actualizarTodo();
+}
+
+function actualizarPresupuestos(){
+let mes=mesSelector.value;
+tablaPresupuestos.innerHTML="";
+let alertaActiva=false;
+if(!presupuestos[mes])return;
+for(let cat in presupuestos[mes]){
+let pres=presupuestos[mes][cat];
+let gast=0;
+movimientos.forEach(m=>{
+if(m.mes===mes&&m.tipo==="gasto"&&m.categoria===cat)gast+=m.cantidad;
+});
+let porcentaje=(gast/pres)*100;
+let color="#4CAF50";
+if(porcentaje>80)color="#FFA500";
+if(porcentaje>100){color="#FF4D4D";alertaActiva=true;}
+porcentaje=porcentaje>100?100:porcentaje;
+tablaPresupuestos.innerHTML+=`
+<tr>
+<td>${cat}</td>
+<td>${pres.toFixed(0)}</td>
+<td>${gast.toFixed(0)}</td>
+<td>
+<div class="progress-container">
+<div class="progress-bar" style="width:${porcentaje}%;background:${color}">
+${porcentaje.toFixed(0)}%
+</div>
+</div>
+</td>
+</tr>`;
+}
+alerta.style.display=alertaActiva?"block":"none";
+}
+
+function guardarMeta(){
+meta=parseFloat(document.getElementById("metaAhorro").value);
+guardarDatos();
+actualizarMeta();
+}
+
+function actualizarMeta(){
+let mes=mesSelector.value;
+let ahorro=0;
+movimientos.forEach(m=>{
+if(m.mes===mes&&m.tipo==="ahorro")ahorro+=m.cantidad;
+});
+let porcentaje=meta>0?(ahorro/meta)*100:0;
+porcentaje=porcentaje>100?100:porcentaje;
+barraMeta.style.width=porcentaje+"%";
+barraMeta.innerText=porcentaje.toFixed(0)+"%";
+}
+
+function actualizarGrafico(){
+let ahorroMensual={};
+movimientos.forEach(m=>{
+if(m.tipo==="ahorro"){
+ahorroMensual[m.mes]=(ahorroMensual[m.mes]||0)+m.cantidad;
+}
+});
+if(window.chart)window.chart.destroy();
+window.chart=new Chart(graficoAhorro,{
+type:"line",
+data:{labels:Object.keys(ahorroMensual),datasets:[{label:"Ahorro mensual",data:Object.values(ahorroMensual),borderColor:"#ff4d88",tension:0.3}]}
+});
+}
+
+function actualizarTodo(){
+actualizarDashboard();
+actualizarTabla();
+actualizarPresupuestos();
+actualizarMeta();
+actualizarGrafico();
+}
+
+mesSelector.addEventListener("change",actualizarTodo);
+actualizarTodo();
+
+</script>
+</body>
+</html>
